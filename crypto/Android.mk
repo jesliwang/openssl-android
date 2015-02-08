@@ -2,11 +2,11 @@ LOCAL_PATH:= $(call my-dir)
 
 arm_cflags := -DOPENSSL_BN_ASM_MONT -DAES_ASM -DSHA1_ASM -DSHA256_ASM -DSHA512_ASM
 arm_src_files := \
-    aes/asm/aes-armv4.S \
-    bn/asm/armv4-mont.S \
-    sha/asm/sha1-armv4-large.S \
-    sha/asm/sha256-armv4.S \
-    sha/asm/sha512-armv4.S
+    aes/asm/aes-armv4.s \
+    bn/asm/armv4-mont.s \
+    sha/asm/sha1-armv4-large.s \
+    sha/asm/sha256-armv4.s \
+    sha/asm/sha512-armv4.s
 non_arm_src_files := aes/aes_core.c
 
 local_src_files := \
@@ -470,12 +470,13 @@ local_src_files := \
 	x509v3/v3_utl.c \
 	x509v3/v3err.c
 
-local_c_includes := \
-	$(NDK_PROJECT_PATH) \
-	$(NDK_PROJECT_PATH)/crypto/asn1 \
-	$(NDK_PROJECT_PATH)/crypto/evp \
-	$(NDK_PROJECT_PATH)/include \
-	$(NDK_PROJECT_PATH)/include/openssl
+local_c_includes := .\
+	crypto/\
+	crypto/asn1 \
+	crypto/evp \
+	include \
+	include/openssl \
+	zlib/ 
 
 local_c_flags := -DNO_WINDOWS_BRAINDEATH
 
@@ -487,7 +488,7 @@ include $(LOCAL_PATH)/../android-config.mk
 LOCAL_SRC_FILES += $(local_src_files)
 LOCAL_CFLAGS += $(local_c_flags)
 LOCAL_C_INCLUDES += $(local_c_includes)
-LOCAL_LDLIBS += -lz
+LOCAL_SHARED_LIBRARIES += libz
 ifeq ($(TARGET_ARCH),arm)
 	LOCAL_SRC_FILES += $(arm_src_files)
 	LOCAL_CFLAGS += $(arm_cflags)
@@ -498,6 +499,8 @@ ifeq ($(TARGET_SIMULATOR),true)
 	# Make valgrind happy.
 	LOCAL_CFLAGS += -DPURIFY
     LOCAL_LDLIBS += -ldl
+else
+	LOCAL_SHARED_LIBRARIES += libdl
 endif
 LOCAL_MODULE_TAGS := optional
 LOCAL_MODULE:= libcrypto
@@ -505,29 +508,32 @@ include $(BUILD_SHARED_LIBRARY)
 
 #######################################
 # host shared library
-ifeq ($(WITH_HOST_DALVIK),true)
-    include $(CLEAR_VARS)
-    include $(LOCAL_PATH)/../android-config.mk
-    LOCAL_SRC_FILES += $(local_src_files)
-    LOCAL_CFLAGS += $(local_c_flags) -DPURIFY
-    LOCAL_C_INCLUDES += $(local_c_includes)
-    LOCAL_SRC_FILES += $(non_arm_src_files)
-    LOCAL_LDLIBS += -ldl
-    LOCAL_MODULE_TAGS := optional
-    LOCAL_MODULE:= libcrypto
-    include $(BUILD_SHARED_LIBRARY)
-endif
+#ifeq ($(WITH_HOST_DALVIK),true)
+#    include $(CLEAR_VARS)
+#    include $(LOCAL_PATH)/../android-config.mk
+#    LOCAL_SRC_FILES += $(local_src_files)
+#    LOCAL_CFLAGS += $(local_c_flags) -DPURIFY
+#    LOCAL_C_INCLUDES += $(local_c_includes)
+#    LOCAL_SRC_FILES += $(non_arm_src_files)
+#    LOCAL_STATIC_LIBRARIES += libz
+#    LOCAL_LDLIBS += -ldl
+#    LOCAL_MODULE_TAGS := optional
+#    LOCAL_MODULE:= libcrypto
+#    include $(BUILD_HOST_SHARED_LIBRARY)
+#endif
 
 ########################################
 # host static library, which is used by some SDK tools.
 
-include $(CLEAR_VARS)
-include $(LOCAL_PATH)/../android-config.mk
-LOCAL_SRC_FILES += $(local_src_files)
-LOCAL_CFLAGS += $(local_c_flags) -DPURIFY
-LOCAL_C_INCLUDES += $(local_c_includes)
-LOCAL_SRC_FILES += $(non_arm_src_files)
-LOCAL_LDLIBS += -ldl
-LOCAL_MODULE_TAGS := optional
-LOCAL_MODULE:= libcrypto_static
-include $(BUILD_STATIC_LIBRARY)
+#include $(CLEAR_VARS)
+#include $(LOCAL_PATH)/../android-config.mk
+#LOCAL_SRC_FILES += $(local_src_files)
+#LOCAL_CFLAGS += $(local_c_flags) -DPURIFY
+#LOCAL_C_INCLUDES += $(local_c_includes)
+#LOCAL_SRC_FILES += $(non_arm_src_files)
+#LOCAL_STATIC_LIBRARIES += libz
+#LOCAL_LDLIBS += -ldl
+#LOCAL_MODULE_TAGS := optional
+#LOCAL_MODULE:= libcrypto_static
+#include $(BUILD_HOST_STATIC_LIBRARY)
+

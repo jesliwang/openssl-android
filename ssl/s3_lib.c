@@ -328,7 +328,7 @@ OPENSSL_GLOBAL SSL_CIPHER ssl3_ciphers[]={
 	SSL_SSLV3,
 	SSL_NOT_EXP|SSL_HIGH|SSL_FIPS,
 	SSL_HANDSHAKE_MAC_DEFAULT|TLS1_PRF,
-	168,
+	112,
 	168,
 	},
 
@@ -377,7 +377,7 @@ OPENSSL_GLOBAL SSL_CIPHER ssl3_ciphers[]={
 	SSL_SSLV3,
 	SSL_NOT_EXP|SSL_HIGH|SSL_FIPS,
 	SSL_HANDSHAKE_MAC_DEFAULT|TLS1_PRF,
-	168,
+	112,
 	168,
 	},
 
@@ -425,7 +425,7 @@ OPENSSL_GLOBAL SSL_CIPHER ssl3_ciphers[]={
 	SSL_SSLV3,
 	SSL_NOT_EXP|SSL_HIGH|SSL_FIPS,
 	SSL_HANDSHAKE_MAC_DEFAULT|TLS1_PRF,
-	168,
+	112,
 	168,
 	},
 
@@ -474,7 +474,7 @@ OPENSSL_GLOBAL SSL_CIPHER ssl3_ciphers[]={
 	SSL_SSLV3,
 	SSL_NOT_EXP|SSL_HIGH|SSL_FIPS,
 	SSL_HANDSHAKE_MAC_DEFAULT|TLS1_PRF,
-	168,
+	112,
 	168,
 	},
 
@@ -522,7 +522,7 @@ OPENSSL_GLOBAL SSL_CIPHER ssl3_ciphers[]={
 	SSL_SSLV3,
 	SSL_NOT_EXP|SSL_HIGH|SSL_FIPS,
 	SSL_HANDSHAKE_MAC_DEFAULT|TLS1_PRF,
-	168,
+	112,
 	168,
 	},
 
@@ -602,7 +602,7 @@ OPENSSL_GLOBAL SSL_CIPHER ssl3_ciphers[]={
 	SSL_SSLV3,
 	SSL_NOT_EXP|SSL_HIGH|SSL_FIPS,
 	SSL_HANDSHAKE_MAC_DEFAULT|TLS1_PRF,
-	168,
+	112,
 	168,
 	},
 
@@ -687,7 +687,7 @@ OPENSSL_GLOBAL SSL_CIPHER ssl3_ciphers[]={
 	SSL_SSLV3,
 	SSL_NOT_EXP|SSL_HIGH|SSL_FIPS,
 	SSL_HANDSHAKE_MAC_DEFAULT|TLS1_PRF,
-	168,
+	112,
 	168,
 	},
 
@@ -751,7 +751,7 @@ OPENSSL_GLOBAL SSL_CIPHER ssl3_ciphers[]={
 	SSL_SSLV3,
 	SSL_NOT_EXP|SSL_HIGH,
 	SSL_HANDSHAKE_MAC_DEFAULT|TLS1_PRF,
-	168,
+	112,
 	168,
 	},
 
@@ -1472,7 +1472,7 @@ OPENSSL_GLOBAL SSL_CIPHER ssl3_ciphers[]={
 	SSL_TLSV1,
 	SSL_NOT_EXP|SSL_HIGH,
 	SSL_HANDSHAKE_MAC_DEFAULT|TLS1_PRF,
-	168,
+	112,
 	168,
 	},
 
@@ -1655,7 +1655,7 @@ OPENSSL_GLOBAL SSL_CIPHER ssl3_ciphers[]={
 	SSL_TLSV1,
 	SSL_NOT_EXP|SSL_HIGH,
 	SSL_HANDSHAKE_MAC_DEFAULT|TLS1_PRF,
-	168,
+	112,
 	168,
 	},
 
@@ -1735,7 +1735,7 @@ OPENSSL_GLOBAL SSL_CIPHER ssl3_ciphers[]={
 	SSL_TLSV1,
 	SSL_NOT_EXP|SSL_HIGH,
 	SSL_HANDSHAKE_MAC_DEFAULT|TLS1_PRF,
-	168,
+	112,
 	168,
 	},
 
@@ -1815,7 +1815,7 @@ OPENSSL_GLOBAL SSL_CIPHER ssl3_ciphers[]={
 	SSL_TLSV1,
 	SSL_NOT_EXP|SSL_HIGH,
 	SSL_HANDSHAKE_MAC_DEFAULT|TLS1_PRF,
-	168,
+	112,
 	168,
 	},
 
@@ -1895,7 +1895,7 @@ OPENSSL_GLOBAL SSL_CIPHER ssl3_ciphers[]={
 	SSL_TLSV1,
 	SSL_NOT_EXP|SSL_HIGH,
 	SSL_HANDSHAKE_MAC_DEFAULT|TLS1_PRF,
-	168,
+	112,
 	168,
 	},
 
@@ -1975,7 +1975,7 @@ OPENSSL_GLOBAL SSL_CIPHER ssl3_ciphers[]={
 	SSL_TLSV1,
 	SSL_NOT_EXP|SSL_HIGH,
 	SSL_HANDSHAKE_MAC_DEFAULT|TLS1_PRF,
-	168,
+	112,
 	168,
 	},
 
@@ -2177,6 +2177,7 @@ void ssl3_clear(SSL *s)
 	{
 	unsigned char *rp,*wp;
 	size_t rlen, wlen;
+	int init_extra;
 
 #ifdef TLSEXT_TYPE_opaque_prf_input
 	if (s->s3->client_opaque_prf_input != NULL)
@@ -2198,17 +2199,29 @@ void ssl3_clear(SSL *s)
 		}
 #ifndef OPENSSL_NO_DH
 	if (s->s3->tmp.dh != NULL)
+		{
 		DH_free(s->s3->tmp.dh);
+		s->s3->tmp.dh = NULL;
+		}
 #endif
 #ifndef OPENSSL_NO_ECDH
 	if (s->s3->tmp.ecdh != NULL)
+		{
 		EC_KEY_free(s->s3->tmp.ecdh);
+		s->s3->tmp.ecdh = NULL;
+		}
 #endif
+#ifndef OPENSSL_NO_TLSEXT
+#ifndef OPENSSL_NO_EC
+	s->s3->is_probably_safari = 0;
+#endif /* !OPENSSL_NO_EC */
+#endif /* !OPENSSL_NO_TLSEXT */
 
 	rp = s->s3->rbuf.buf;
 	wp = s->s3->wbuf.buf;
 	rlen = s->s3->rbuf.len;
  	wlen = s->s3->wbuf.len;
+	init_extra = s->s3->init_extra;
 	if (s->s3->handshake_buffer) {
 		BIO_free(s->s3->handshake_buffer);
 		s->s3->handshake_buffer = NULL;
@@ -2221,6 +2234,7 @@ void ssl3_clear(SSL *s)
 	s->s3->wbuf.buf = wp;
 	s->s3->rbuf.len = rlen;
  	s->s3->wbuf.len = wlen;
+	s->s3->init_extra = init_extra;
 
 	ssl_free_wbio_buffer(s);
 
@@ -2478,6 +2492,29 @@ long ssl3_ctrl(SSL *s, int cmd, long larg, void *parg)
 		break;
 
 #endif /* !OPENSSL_NO_TLSEXT */
+
+	case SSL_CTRL_CHECK_PROTO_VERSION:
+		/* For library-internal use; checks that the current protocol
+		 * is the highest enabled version (according to s->ctx->method,
+		 * as version negotiation may have changed s->method). */
+		if (s->version == s->ctx->method->version)
+			return 1;
+		/* Apparently we're using a version-flexible SSL_METHOD
+		 * (not at its highest protocol version). */
+		if (s->ctx->method->version == SSLv23_method()->version)
+			{
+#if TLS_MAX_VERSION != TLS1_VERSION
+#  error Code needs update for SSLv23_method() support beyond TLS1_VERSION.
+#endif
+			if (!(s->options & SSL_OP_NO_TLSv1))
+				return s->version == TLS1_VERSION;
+			if (!(s->options & SSL_OP_NO_SSLv3))
+				return s->version == SSL3_VERSION;
+			if (!(s->options & SSL_OP_NO_SSLv2))
+				return s->version == SSL2_VERSION;
+			}
+		return 0; /* Unexpected state; fail closed. */
+
 	default:
 		break;
 		}
@@ -2779,6 +2816,7 @@ long ssl3_ctx_callback_ctrl(SSL_CTX *ctx, int cmd, void (*fp)(void))
 		break;
 
 #endif
+
 	default:
 		return(0);
 		}
@@ -3020,6 +3058,7 @@ SSL_CIPHER *ssl3_choose_cipher(SSL *s, STACK_OF(SSL_CIPHER) *clnt,
 				}
 			ok = ok && ec_ok;
 			}
+#ifndef OPENSSL_NO_ECDH
 		if (
 			/* if we are considering an ECC cipher suite that uses an ephemeral EC key */
 			(alg_k & SSL_kEECDH)
@@ -3067,6 +3106,7 @@ SSL_CIPHER *ssl3_choose_cipher(SSL *s, STACK_OF(SSL_CIPHER) *clnt,
 				}
 			ok = ok && ec_ok;
 			}
+#endif /* OPENSSL_NO_ECDH */
 #endif /* OPENSSL_NO_EC */
 #endif /* OPENSSL_NO_TLSEXT */
 
@@ -3074,6 +3114,13 @@ SSL_CIPHER *ssl3_choose_cipher(SSL *s, STACK_OF(SSL_CIPHER) *clnt,
 		ii=sk_SSL_CIPHER_find(allow,c);
 		if (ii >= 0)
 			{
+#if !defined(OPENSSL_NO_EC) && !defined(OPENSSL_NO_TLSEXT)
+			if ((alg_k & SSL_kEECDH) && (alg_a & SSL_aECDSA) && s->s3->is_probably_safari)
+				{
+				if (!ret) ret=sk_SSL_CIPHER_value(allow,ii);
+				continue;
+				}
+#endif
 			ret=sk_SSL_CIPHER_value(allow,ii);
 			break;
 			}
@@ -3257,22 +3304,9 @@ int ssl3_write(SSL *s, const void *buf, int len)
 
 static int ssl3_read_internal(SSL *s, void *buf, int len, int peek)
 	{
-	int n,ret;
+	int ret;
 	
 	clear_sys_error();
-	if ((s->s3->flags & SSL3_FLAGS_POP_BUFFER) && (s->wbio == s->bbio))
-		{
-		/* Deal with an application that calls SSL_read() when handshake data
-		 * is yet to be written.
-		 */
-		if (BIO_wpending(s->wbio) > 0)
-			{
-			s->rwstate=SSL_WRITING;
-			n=BIO_flush(s->wbio);
-			if (n <= 0) return(n);
-			s->rwstate=SSL_NOTHING;
-			}
-		}
 	if (s->s3->renegotiate) ssl3_renegotiate_check(s);
 	s->s3->in_read_app_data=1;
 	ret=s->method->ssl_read_bytes(s,SSL3_RT_APPLICATION_DATA,buf,len,peek);
@@ -3339,4 +3373,3 @@ need to go to SSL_ST_ACCEPT.
 		}
 	return(ret);
 	}
-

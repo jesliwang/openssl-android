@@ -240,7 +240,7 @@ int ssl3_get_finished(SSL *s, int a, int b)
 		goto f_err;
 		}
 
-	if (memcmp(p, s->s3->tmp.peer_finish_md, i) != 0)
+	if (CRYPTO_memcmp(p, s->s3->tmp.peer_finish_md, i) != 0)
 		{
 		al=SSL_AD_DECRYPT_ERROR;
 		SSLerr(SSL_F_SSL3_GET_FINISHED,SSL_R_DIGEST_CHECK_FAILED);
@@ -415,6 +415,7 @@ long ssl3_get_message(SSL *s, int st1, int stn, int mt, long max, int *ok)
 			goto f_err;
 			}
 		*ok=1;
+		s->state = stn;
 		s->init_msg = s->init_buf->data + 4;
 		s->init_num = (int)s->s3->tmp.message_size;
 		return s->init_num;
@@ -722,20 +723,13 @@ int ssl3_setup_read_buffer(SSL *s)
 
 	if (s->s3->rbuf.buf == NULL)
 		{
-		if (SSL_get_mode(s) & SSL_MODE_SMALL_BUFFERS)
+		len = SSL3_RT_MAX_PLAIN_LENGTH
+			+ SSL3_RT_MAX_ENCRYPTED_OVERHEAD
+			+ headerlen + align;
+		if (s->options & SSL_OP_MICROSOFT_BIG_SSLV3_BUFFER)
 			{
-			len = SSL3_RT_DEFAULT_PACKET_SIZE;
-			}
-  		else
-			{
-			len = SSL3_RT_MAX_PLAIN_LENGTH
-				+ SSL3_RT_MAX_ENCRYPTED_OVERHEAD
-				+ headerlen + align;
-			if (s->options & SSL_OP_MICROSOFT_BIG_SSLV3_BUFFER)
-				{
-				s->s3->init_extra = 1;
-				len += SSL3_RT_MAX_EXTRA;
-				}
+			s->s3->init_extra = 1;
+			len += SSL3_RT_MAX_EXTRA;
 			}
 #ifndef OPENSSL_NO_COMP
 		if (!(s->options & SSL_OP_NO_COMPRESSION))
@@ -771,15 +765,7 @@ int ssl3_setup_write_buffer(SSL *s)
 
 	if (s->s3->wbuf.buf == NULL)
 		{
-		if (SSL_get_mode(s) & SSL_MODE_SMALL_BUFFERS)
-			{
-			len = SSL3_RT_DEFAULT_PACKET_SIZE;
-			}
-  		else
-			{
-			len = s->max_send_fragment;
-			}
-		len += 0
+		len = s->max_send_fragment
 			+ SSL3_RT_SEND_MAX_ENCRYPTED_OVERHEAD
 			+ headerlen + align;
 #ifndef OPENSSL_NO_COMP
@@ -789,6 +775,7 @@ int ssl3_setup_write_buffer(SSL *s)
 		if (!(s->options & SSL_OP_DONT_INSERT_EMPTY_FRAGMENTS))
 			len += headerlen + align
 				+ SSL3_RT_SEND_MAX_ENCRYPTED_OVERHEAD;
+
 		if ((p=freelist_extract(s->ctx, 0, len)) == NULL)
 			goto err;
 		s->s3->wbuf.buf = p;
@@ -831,3 +818,4 @@ int ssl3_release_read_buffer(SSL *s)
 		}
 	return 1;
 	}
+

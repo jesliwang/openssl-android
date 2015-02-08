@@ -284,6 +284,7 @@ static void sc_usage(void)
 	BIO_printf(bio_err," -connect host:port - who to connect to (default is %s:%s)\n",SSL_HOST_NAME,PORT_STR);
 
 	BIO_printf(bio_err," -verify arg   - turn on peer certificate verification\n");
+	BIO_printf(bio_err," -verify_return_error - return verification errors\n");
 	BIO_printf(bio_err," -cert arg     - certificate file to use, PEM format assumed\n");
 	BIO_printf(bio_err," -certform arg - certificate format (PEM or DER) PEM default\n");
 	BIO_printf(bio_err," -key arg      - Private key file to use, in cert file if\n");
@@ -294,6 +295,7 @@ static void sc_usage(void)
 	BIO_printf(bio_err," -CAfile arg   - PEM format file of CA's\n");
 	BIO_printf(bio_err," -reconnect    - Drop and re-make the connection with the same Session-ID\n");
 	BIO_printf(bio_err," -pause        - sleep(1) after each read(2) and write(2) system call\n");
+	BIO_printf(bio_err," -prexit       - print session information even on connection failure\n");
 	BIO_printf(bio_err," -showcerts    - show all certificates in the chain\n");
 	BIO_printf(bio_err," -debug        - extra output\n");
 #ifdef WATT32
@@ -320,6 +322,7 @@ static void sc_usage(void)
 	BIO_printf(bio_err," -ssl3         - just use SSLv3\n");
 	BIO_printf(bio_err," -tls1         - just use TLSv1\n");
 	BIO_printf(bio_err," -dtls1        - just use DTLSv1\n");    
+	BIO_printf(bio_err," -fallback_scsv - send TLS_FALLBACK_SCSV\n");
 	BIO_printf(bio_err," -mtu          - set the link layer MTU\n");
 	BIO_printf(bio_err," -no_tls1/-no_ssl3/-no_ssl2 - turn off that protocol\n");
 	BIO_printf(bio_err," -bugs         - Switch on all SSL implementation bug workarounds\n");
@@ -342,7 +345,6 @@ static void sc_usage(void)
 	BIO_printf(bio_err," -tlsextdebug      - hex dump of all TLS extensions received\n");
 	BIO_printf(bio_err," -status           - request certificate status from server\n");
 	BIO_printf(bio_err," -no_ticket        - disable use of RFC4507bis session tickets\n");
-	BIO_printf(bio_err," -cutthrough       - enable 1-RTT full-handshake for strong ciphers\n");
 #endif
 	BIO_printf(bio_err," -legacy_renegotiation - enable use of legacy renegotiation (dangerous)\n");
 	}
@@ -400,7 +402,6 @@ int MAIN(int argc, char **argv)
 	EVP_PKEY *key = NULL;
 	char *CApath=NULL,*CAfile=NULL,*cipher=NULL;
 	int reconnect=0,badop=0,verify=SSL_VERIFY_NONE,bugs=0;
-	int cutthrough=0;
 	int crlf=0;
 	int write_tty,read_tty,write_ssl,read_ssl,tty_on,ssl_pending;
 	SSL_CTX *ctx=NULL;
@@ -436,19 +437,14 @@ int MAIN(int argc, char **argv)
 	char *sess_out = NULL;
 	struct sockaddr peer;
 	int peerlen = sizeof(peer);
+	int fallback_scsv = 0;
 	int enable_timeouts = 0 ;
 	long socket_mtu = 0;
 #ifndef OPENSSL_NO_JPAKE
 	char *jpake_secret = NULL;
 #endif
 
-#if !defined(OPENSSL_NO_SSL2) && !defined(OPENSSL_NO_SSL3)
 	meth=SSLv23_client_method();
-#elif !defined(OPENSSL_NO_SSL3)
-	meth=SSLv3_client_method();
-#elif !defined(OPENSSL_NO_SSL2)
-	meth=SSLv2_client_method();
-#endif
 
 	apps_startup();
 	c_Pause=0;
@@ -583,7 +579,7 @@ int MAIN(int argc, char **argv)
 			psk_key=*(++argv);
 			for (j = 0; j < strlen(psk_key); j++)
                                 {
-                                if (isxdigit((int)psk_key[j]))
+                                if (isxdigit((unsigned char)psk_key[j]))
                                         continue;
                                 BIO_printf(bio_err,"Not a hex number '%s'\n",*argv);
                                 goto bad;
@@ -616,6 +612,10 @@ int MAIN(int argc, char **argv)
 			socket_mtu = atol(*(++argv));
 			}
 #endif
+		else if (strcmp(*argv,"-fallback_scsv") == 0)
+			{
+			fallback_scsv = 1;
+			}
 		else if (strcmp(*argv,"-bugs") == 0)
 			bugs=1;
 		else if	(strcmp(*argv,"-keyform") == 0)
@@ -659,8 +659,6 @@ int MAIN(int argc, char **argv)
 		else if	(strcmp(*argv,"-no_ticket") == 0)
 			{ off|=SSL_OP_NO_TICKET; }
 #endif
-		else if (strcmp(*argv,"-cutthrough") == 0)
-			cutthrough=1;
 		else if (strcmp(*argv,"-serverpref") == 0)
 			off|=SSL_OP_CIPHER_SERVER_PREFERENCE;
 		else if (strcmp(*argv,"-legacy_renegotiation") == 0)
@@ -753,14 +751,13 @@ bad:
 			goto end;
 			}
 		psk_identity = "JPAKE";
+		if (cipher)
+			{
+			BIO_printf(bio_err, "JPAKE sets cipher to PSK\n");
+			goto end;
+			}
+		cipher = "PSK";
 		}
-
-	if (cipher)
-		{
-		BIO_printf(bio_err, "JPAKE sets cipher to PSK\n");
-		goto end;
-		}
-	cipher = "PSK";
 #endif
 
 	OpenSSL_add_ssl_algorithms();
@@ -887,15 +884,6 @@ bad:
 	 */
 	if (socket_type == SOCK_DGRAM) SSL_CTX_set_read_ahead(ctx, 1);
 
-	/* Enable handshake cutthrough for client connections using
-	 * strong ciphers. */
-	if (cutthrough)
-		{
-		int ssl_mode = SSL_CTX_get_mode(ctx);
-		ssl_mode |= SSL_MODE_HANDSHAKE_CUTTHROUGH;
-		SSL_CTX_set_mode(ctx, ssl_mode);
-		}
-
 	if (state) SSL_CTX_set_info_callback(ctx,apps_ssl_info_callback);
 	if (cipher != NULL)
 		if(!SSL_CTX_set_cipher_list(ctx,cipher)) {
@@ -953,6 +941,10 @@ bad:
 		SSL_set_session(con, sess);
 		SSL_SESSION_free(sess);
 		}
+
+	if (fallback_scsv)
+		SSL_set_mode(con, SSL_MODE_SEND_FALLBACK_SCSV);
+
 #ifndef OPENSSL_NO_TLSEXT
 	if (servername != NULL)
 		{
@@ -1026,10 +1018,22 @@ re_start:
 			BIO_ctrl(sbio, BIO_CTRL_DGRAM_SET_SEND_TIMEOUT, 0, &timeout);
 			}
 
-		if (socket_mtu > 28)
+		if (socket_mtu)
 			{
+			if(socket_mtu < DTLS_get_link_min_mtu(con))
+				{
+				BIO_printf(bio_err,"MTU too small. Must be at least %ld\n",
+					DTLS_get_link_min_mtu(con));
+				BIO_free(sbio);
+				goto shut;
+				}
 			SSL_set_options(con, SSL_OP_NO_QUERY_MTU);
-			SSL_set_mtu(con, socket_mtu - 28);
+			if(!DTLS_set_link_mtu(con, socket_mtu))
+				{
+				BIO_printf(bio_err, "Failed to set MTU\n");
+				BIO_free(sbio);
+				goto shut;
+				}
 			}
 		else
 			/* want to do MTU discovery */
@@ -1616,6 +1620,8 @@ end:
 		EVP_PKEY_free(key);
 	if (pass)
 		OPENSSL_free(pass);
+	if (vpm)
+		X509_VERIFY_PARAM_free(vpm);
 	if (cbuf != NULL) { OPENSSL_cleanse(cbuf,BUFSIZZ); OPENSSL_free(cbuf); }
 	if (sbuf != NULL) { OPENSSL_cleanse(sbuf,BUFSIZZ); OPENSSL_free(sbuf); }
 	if (mbuf != NULL) { OPENSSL_cleanse(mbuf,BUFSIZZ); OPENSSL_free(mbuf); }

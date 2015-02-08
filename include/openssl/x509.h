@@ -258,6 +258,7 @@ typedef struct x509_cinf_st
 	ASN1_BIT_STRING *issuerUID;		/* [ 1 ] optional in v2 */
 	ASN1_BIT_STRING *subjectUID;		/* [ 2 ] optional in v2 */
 	STACK_OF(X509_EXTENSION) *extensions;	/* [ 3 ] optional in v3 */
+	ASN1_ENCODING enc;
 	} X509_CINF;
 
 /* This stuff is certificate "auxiliary info"
@@ -762,6 +763,7 @@ X509_ALGOR *X509_ALGOR_dup(X509_ALGOR *xn);
 int X509_ALGOR_set0(X509_ALGOR *alg, ASN1_OBJECT *aobj, int ptype, void *pval);
 void X509_ALGOR_get0(ASN1_OBJECT **paobj, int *pptype, void **ppval,
 						X509_ALGOR *algor);
+int X509_ALGOR_cmp(const X509_ALGOR *a, const X509_ALGOR *b);
 
 X509_NAME *X509_NAME_dup(X509_NAME *xn);
 X509_NAME_ENTRY *X509_NAME_ENTRY_dup(X509_NAME_ENTRY *ne);

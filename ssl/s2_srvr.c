@@ -188,13 +188,21 @@ int ssl2_accept(SSL *s)
 			s->version=SSL2_VERSION;
 			s->type=SSL_ST_ACCEPT;
 
-			buf=s->init_buf;
-			if ((buf == NULL) && ((buf=BUF_MEM_new()) == NULL))
-				{ ret= -1; goto end; }
-			if (!BUF_MEM_grow(buf,(int)
-				SSL2_MAX_RECORD_LENGTH_3_BYTE_HEADER))
-				{ ret= -1; goto end; }
-			s->init_buf=buf;
+			if(s->init_buf == NULL)
+				{
+				if ((buf=BUF_MEM_new()) == NULL)
+					{
+					ret= -1;
+					goto end;
+					}
+				if (!BUF_MEM_grow(buf,(int) SSL2_MAX_RECORD_LENGTH_3_BYTE_HEADER))
+					{
+					BUF_MEM_free(buf);
+					ret= -1;
+					goto end;
+					}
+				s->init_buf=buf;
+				}
 			s->init_num=0;
 			s->ctx->stats.sess_accept++;
 			s->handshake_func=ssl2_accept;
@@ -403,13 +411,14 @@ static int get_client_master_key(SSL *s)
 		p+=3;
 		n2s(p,i); s->s2->tmp.clear=i;
 		n2s(p,i); s->s2->tmp.enc=i;
-		n2s(p,i); s->session->key_arg_length=i;
-		if(s->session->key_arg_length > SSL_MAX_KEY_ARG_LENGTH)
+		n2s(p,i);
+		if(i > SSL_MAX_KEY_ARG_LENGTH)
 			{
 			ssl2_return_error(s,SSL2_PE_UNDEFINED_ERROR);
 			SSLerr(SSL_F_GET_CLIENT_MASTER_KEY, SSL_R_KEY_ARG_TOO_LONG);
 			return -1;
 			}
+		s->session->key_arg_length=i;
 		s->state=SSL2_ST_GET_CLIENT_MASTER_KEY_B;
 		}
 
@@ -697,7 +706,6 @@ static int server_hello(SSL *s)
 	{
 	unsigned char *p,*d;
 	int n,hit;
-	STACK_OF(SSL_CIPHER) *sk;
 
 	p=(unsigned char *)s->init_buf->data;
 	if (s->state == SSL2_ST_SEND_SERVER_HELLO_A)
@@ -778,7 +786,6 @@ static int server_hello(SSL *s)
 			
 			/* lets send out the ciphers we like in the
 			 * prefered order */
-			sk= s->session->ciphers;
 			n=ssl_cipher_list_to_bytes(s,s->session->ciphers,d,0);
 			d+=n;
 			s2n(n,p);		/* add cipher length */

@@ -378,13 +378,7 @@ SSL *SSL_new(SSL_CTX *ctx)
 	return(s);
 err:
 	if (s != NULL)
-		{
-		if (s->cert != NULL)
-			ssl_cert_free(s->cert);
-		if (s->ctx != NULL)
-			SSL_CTX_free(s->ctx); /* decrement reference count */
-		OPENSSL_free(s);
-		}
+		SSL_free(s);
 	SSLerr(SSL_F_SSL_NEW,ERR_R_MALLOC_FAILURE);
 	return(NULL);
 	}
@@ -1054,14 +1048,6 @@ long SSL_ctrl(SSL *s,int cmd,long larg,void *parg)
 		l=s->max_cert_list;
 		s->max_cert_list=larg;
 		return(l);
-	case SSL_CTRL_SET_MTU:
-		if (SSL_version(s) == DTLS1_VERSION ||
-		    SSL_version(s) == DTLS1_BAD_VER)
-			{
-			s->d1->mtu = larg;
-			return larg;
-			}
-		return 0;
 	case SSL_CTRL_SET_MAX_SEND_FRAGMENT:
 		if (larg < 512 || larg > SSL3_RT_MAX_PLAIN_LENGTH)
 			return 0;
@@ -1344,6 +1330,10 @@ char *SSL_get_shared_ciphers(const SSL *s,char *buf,int len)
 
 	p=buf;
 	sk=s->session->ciphers;
+
+	if (sk_SSL_CIPHER_num(sk) == 0)
+		return NULL;
+
 	for (i=0; i<sk_SSL_CIPHER_num(sk); i++)
 		{
 		int n;
@@ -1378,6 +1368,8 @@ int ssl_cipher_list_to_bytes(SSL *s,STACK_OF(SSL_CIPHER) *sk,unsigned char *p,
 
 	if (sk == NULL) return(0);
 	q=p;
+	if (put_cb == NULL)
+		put_cb = s->method->put_cipher_by_char;
 
 	for (i=0; i<sk_SSL_CIPHER_num(sk); i++)
 		{
@@ -1393,24 +1385,36 @@ int ssl_cipher_list_to_bytes(SSL *s,STACK_OF(SSL_CIPHER) *sk,unsigned char *p,
 		    s->psk_client_callback == NULL)
 			continue;
 #endif /* OPENSSL_NO_PSK */
-		j = put_cb ? put_cb(c,p) : ssl_put_cipher_by_char(s,c,p);
+		j = put_cb(c,p);
 		p+=j;
 		}
-	/* If p == q, no ciphers and caller indicates an error. Otherwise
-	 * add SCSV if not renegotiating.
-	 */
-	if (p != q && !s->new_session)
+	/* If p == q, no ciphers; caller indicates an error.
+	 * Otherwise, add applicable SCSVs. */
+	if (p != q)
 		{
-		static SSL_CIPHER scsv =
+		if (!s->new_session)
 			{
-			0, NULL, SSL3_CK_SCSV, 0, 0, 0, 0, 0, 0, 0, 0, 0
-			};
-		j = put_cb ? put_cb(&scsv,p) : ssl_put_cipher_by_char(s,&scsv,p);
-		p+=j;
+			static SSL_CIPHER scsv =
+				{
+				0, NULL, SSL3_CK_SCSV, 0, 0, 0, 0, 0, 0, 0, 0, 0
+				};
+			j = put_cb(&scsv,p);
+			p+=j;
 #ifdef OPENSSL_RI_DEBUG
-		fprintf(stderr, "SCSV sent by client\n");
+			fprintf(stderr, "TLS_EMPTY_RENEGOTIATION_INFO_SCSV sent by client\n");
 #endif
-		}
+			}
+
+		if (s->mode & SSL_MODE_SEND_FALLBACK_SCSV)
+			{
+			static SSL_CIPHER scsv =
+				{
+				0, NULL, SSL3_CK_FALLBACK_SCSV, 0, 0, 0, 0, 0, 0, 0, 0, 0
+				};
+			j = put_cb(&scsv,p);
+			p+=j;
+			}
+ 		}
 
 	return(p-q);
 	}
@@ -1421,11 +1425,12 @@ STACK_OF(SSL_CIPHER) *ssl_bytes_to_cipher_list(SSL *s,unsigned char *p,int num,
 	const SSL_CIPHER *c;
 	STACK_OF(SSL_CIPHER) *sk;
 	int i,n;
+
 	if (s->s3)
 		s->s3->send_connection_binding = 0;
 
 	n=ssl_put_cipher_by_char(s,NULL,NULL);
-	if ((num%n) != 0)
+	if (n == 0 || (num%n) != 0)
 		{
 		SSLerr(SSL_F_SSL_BYTES_TO_CIPHER_LIST,SSL_R_ERROR_IN_RECEIVED_CIPHER_LIST);
 		return(NULL);
@@ -1440,7 +1445,7 @@ STACK_OF(SSL_CIPHER) *ssl_bytes_to_cipher_list(SSL *s,unsigned char *p,int num,
 
 	for (i=0; i<num; i+=n)
 		{
-		/* Check for SCSV */
+		/* Check for TLS_EMPTY_RENEGOTIATION_INFO_SCSV */
 		if (s->s3 && (n != 3 || !p[0]) &&
 			(p[n-2] == ((SSL3_CK_SCSV >> 8) & 0xff)) &&
 			(p[n-1] == (SSL3_CK_SCSV & 0xff)))
@@ -1457,6 +1462,24 @@ STACK_OF(SSL_CIPHER) *ssl_bytes_to_cipher_list(SSL *s,unsigned char *p,int num,
 #ifdef OPENSSL_RI_DEBUG
 			fprintf(stderr, "SCSV received by server\n");
 #endif
+			continue;
+			}
+
+		/* Check for TLS_FALLBACK_SCSV */
+		if ((n != 3 || !p[0]) &&
+			(p[n-2] == ((SSL3_CK_FALLBACK_SCSV >> 8) & 0xff)) &&
+			(p[n-1] == (SSL3_CK_FALLBACK_SCSV & 0xff)))
+			{
+			/* The SCSV indicates that the client previously tried a higher version.
+			 * Fail if the current version is an unexpected downgrade. */
+			if (!SSL_ctrl(s, SSL_CTRL_CHECK_PROTO_VERSION, 0, NULL))
+				{
+				SSLerr(SSL_F_SSL_BYTES_TO_CIPHER_LIST,SSL_R_INAPPROPRIATE_FALLBACK);
+				if (s->s3)
+					ssl3_send_alert(s,SSL3_AL_FATAL,SSL_AD_INAPPROPRIATE_FALLBACK);
+				goto err;
+				}
+			p += n;
 			continue;
 			}
 
@@ -1651,7 +1674,9 @@ SSL_CTX *SSL_CTX_new(const SSL_METHOD *meth)
 	CRYPTO_new_ex_data(CRYPTO_EX_INDEX_SSL_CTX, ret, &ret->ex_data);
 
 	ret->extra_certs=NULL;
-	ret->comp_methods=SSL_COMP_get_compression_methods();
+	/* No compression for DTLS */
+	if (meth->version != DTLS1_VERSION)
+		ret->comp_methods=SSL_COMP_get_compression_methods();
 
 	ret->max_send_fragment = SSL3_RT_MAX_PLAIN_LENGTH;
 
@@ -1860,7 +1885,7 @@ void ssl_set_cert_masks(CERT *c, const SSL_CIPHER *cipher)
 #endif
 	X509 *x = NULL;
 	EVP_PKEY *ecc_pkey = NULL;
-	int signature_nid = 0;
+	int signature_nid = 0, pk_nid = 0, md_nid = 0;
 
 	if (c == NULL) return;
 
@@ -1990,18 +2015,15 @@ void ssl_set_cert_masks(CERT *c, const SSL_CIPHER *cipher)
 		    EVP_PKEY_bits(ecc_pkey) : 0;
 		EVP_PKEY_free(ecc_pkey);
 		if ((x->sig_alg) && (x->sig_alg->algorithm))
+			{
 			signature_nid = OBJ_obj2nid(x->sig_alg->algorithm);
+			OBJ_find_sigid_algs(signature_nid, &md_nid, &pk_nid);
+			}
 #ifndef OPENSSL_NO_ECDH
 		if (ecdh_ok)
 			{
-			const char *sig = OBJ_nid2ln(signature_nid);
-			if (sig == NULL)
-				{
-				ERR_clear_error();
-				sig = "unknown";
-				}
-				
-			if (strstr(sig, "WithRSA"))
+
+			if (pk_nid == NID_rsaEncryption || pk_nid == NID_rsa)
 				{
 				mask_k|=SSL_kECDHr;
 				mask_a|=SSL_aECDH;
@@ -2012,7 +2034,7 @@ void ssl_set_cert_masks(CERT *c, const SSL_CIPHER *cipher)
 					}
 				}
 
-			if (signature_nid == NID_ecdsa_with_SHA1)
+			if (pk_nid == NID_X9_62_id_ecPublicKey)
 				{
 				mask_k|=SSL_kECDHe;
 				mask_a|=SSL_aECDH;
@@ -2066,7 +2088,7 @@ int ssl_check_srvr_ecc_cert_and_alg(X509 *x, const SSL_CIPHER *cs)
 	unsigned long alg_k, alg_a;
 	EVP_PKEY *pkey = NULL;
 	int keysize = 0;
-	int signature_nid = 0;
+	int signature_nid = 0, md_nid = 0, pk_nid = 0;
 
 	alg_k = cs->algorithm_mkey;
 	alg_a = cs->algorithm_auth;
@@ -2084,7 +2106,10 @@ int ssl_check_srvr_ecc_cert_and_alg(X509 *x, const SSL_CIPHER *cs)
 	/* This call populates the ex_flags field correctly */
 	X509_check_purpose(x, -1, 0);
 	if ((x->sig_alg) && (x->sig_alg->algorithm))
+		{
 		signature_nid = OBJ_obj2nid(x->sig_alg->algorithm);
+		OBJ_find_sigid_algs(signature_nid, &md_nid, &pk_nid);
+		}
 	if (alg_k & SSL_kECDHe || alg_k & SSL_kECDHr)
 		{
 		/* key usage, if present, must allow key agreement */
@@ -2096,7 +2121,7 @@ int ssl_check_srvr_ecc_cert_and_alg(X509 *x, const SSL_CIPHER *cs)
 		if (alg_k & SSL_kECDHe)
 			{
 			/* signature alg must be ECDSA */
-			if (signature_nid != NID_ecdsa_with_SHA1)
+			if (pk_nid != NID_X9_62_id_ecPublicKey)
 				{
 				SSLerr(SSL_F_SSL_CHECK_SRVR_ECC_CERT_AND_ALG, SSL_R_ECC_CERT_SHOULD_HAVE_SHA1_SIGNATURE);
 				return 0;
@@ -2106,13 +2131,7 @@ int ssl_check_srvr_ecc_cert_and_alg(X509 *x, const SSL_CIPHER *cs)
 			{
 			/* signature alg must be RSA */
 
-			const char *sig = OBJ_nid2ln(signature_nid);
-			if (sig == NULL)
-				{
-				ERR_clear_error();
-				sig = "unknown";
-				}
-			if (strstr(sig, "WithRSA") == NULL)
+			if (pk_nid != NID_rsaEncryption && pk_nid != NID_rsa)
 				{
 				SSLerr(SSL_F_SSL_CHECK_SRVR_ECC_CERT_AND_ALG, SSL_R_ECC_CERT_SHOULD_HAVE_RSA_SIGNATURE);
 				return 0;
@@ -2135,25 +2154,14 @@ int ssl_check_srvr_ecc_cert_and_alg(X509 *x, const SSL_CIPHER *cs)
 #endif
 
 /* THIS NEEDS CLEANING UP */
-X509 *ssl_get_server_send_cert(SSL *s)
+CERT_PKEY *ssl_get_server_send_pkey(const SSL *s)
 	{
-	unsigned long alg_k,alg_a,mask_k,mask_a;
+	unsigned long alg_k,alg_a;
 	CERT *c;
-	int i,is_export;
+	int i;
 
 	c=s->cert;
 	ssl_set_cert_masks(c, s->s3->tmp.new_cipher);
-	is_export=SSL_C_IS_EXPORT(s->s3->tmp.new_cipher);
-	if (is_export)
-		{
-		mask_k = c->export_mask_k;
-		mask_a = c->export_mask_a;
-		}
-	else
-		{
-		mask_k = c->mask_k;
-		mask_a = c->mask_a;
-		}
 	
 	alg_k = s->s3->tmp.new_cipher->algorithm_mkey;
 	alg_a = s->s3->tmp.new_cipher->algorithm_auth;
@@ -2201,12 +2209,20 @@ X509 *ssl_get_server_send_cert(SSL *s)
 		i=SSL_PKEY_GOST01;
 	else /* if (alg_a & SSL_aNULL) */
 		{
-		SSLerr(SSL_F_SSL_GET_SERVER_SEND_CERT,ERR_R_INTERNAL_ERROR);
+		SSLerr(SSL_F_SSL_GET_SERVER_SEND_PKEY,ERR_R_INTERNAL_ERROR);
 		return(NULL);
 		}
-	if (c->pkeys[i].x509 == NULL) return(NULL);
 
-	return(c->pkeys[i].x509);
+	return c->pkeys + i;
+	}
+
+X509 *ssl_get_server_send_cert(const SSL *s)
+	{
+	CERT_PKEY *cpk;
+	cpk = ssl_get_server_send_pkey(s);
+	if (!cpk)
+		return NULL;
+	return cpk->x509;
 	}
 
 EVP_PKEY *ssl_get_sign_pkey(SSL *s,const SSL_CIPHER *cipher)
@@ -3058,19 +3074,6 @@ void SSL_set_msg_callback(SSL *ssl, void (*cb)(int write_p, int version, int con
 	SSL_callback_ctrl(ssl, SSL_CTRL_SET_MSG_CALLBACK, (void (*)(void))cb);
 	}
 
-int SSL_cutthrough_complete(const SSL *s)
-	{
-	return (!s->server &&                 /* cutthrough only applies to clients */
-		!s->hit &&                        /* full-handshake */
-		s->version >= SSL3_VERSION &&
-		s->s3->in_read_app_data == 0 &&   /* cutthrough only applies to write() */
-		(SSL_get_mode((SSL*)s) & SSL_MODE_HANDSHAKE_CUTTHROUGH) &&  /* cutthrough enabled */
-		SSL_get_cipher_bits(s, NULL) >= 128 &&                      /* strong cipher choosen */
-		s->s3->previous_server_finished_len == 0 &&                 /* not a renegotiation handshake */
-		(s->state == SSL3_ST_CR_SESSION_TICKET_A ||                 /* ready to write app-data*/
-			s->state == SSL3_ST_CR_FINISHED_A));
-	}
-
 /* Allocates new EVP_MD_CTX and sets pointer to it into given pointer
  * vairable, freeing  EVP_MD_CTX previously stored in that variable, if
  * any. If EVP_MD pointer is passed, initializes ctx with this md
@@ -3099,4 +3102,3 @@ IMPLEMENT_STACK_OF(SSL_CIPHER)
 IMPLEMENT_STACK_OF(SSL_COMP)
 IMPLEMENT_OBJ_BSEARCH_GLOBAL_CMP_FN(SSL_CIPHER, SSL_CIPHER,
 				    ssl_cipher_id);
-

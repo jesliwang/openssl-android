@@ -169,11 +169,13 @@ static void ec_pre_comp_clear_free(void *pre_)
 		EC_POINT **p;
 
 		for (p = pre->points; *p != NULL; p++)
+			{
 			EC_POINT_clear_free(*p);
-		OPENSSL_cleanse(pre->points, sizeof pre->points);
+			OPENSSL_cleanse(p, sizeof *p);
+			}
 		OPENSSL_free(pre->points);
 		}
-	OPENSSL_cleanse(pre, sizeof pre);
+	OPENSSL_cleanse(pre, sizeof *pre);
 	OPENSSL_free(pre);
 	}
 
@@ -443,14 +445,15 @@ int ec_wNAF_mul(const EC_GROUP *group, EC_POINT *r, const BIGNUM *scalar,
 	wNAF_len = OPENSSL_malloc(totalnum * sizeof wNAF_len[0]);
 	wNAF     = OPENSSL_malloc((totalnum + 1) * sizeof wNAF[0]); /* includes space for pivot */
 	val_sub  = OPENSSL_malloc(totalnum * sizeof val_sub[0]);
-		 
+
+	/* Ensure wNAF is initialised in case we end up going to err */
+	if (wNAF) wNAF[0] = NULL;	/* preliminary pivot */
+
 	if (!wsize || !wNAF_len || !wNAF || !val_sub)
 		{
 		ECerr(EC_F_EC_WNAF_MUL, ERR_R_MALLOC_FAILURE);
 		goto err;
 		}
-
-	wNAF[0] = NULL;	/* preliminary pivot */
 
 	/* num_val will be the total number of temporarily precomputed points */
 	num_val = 0;

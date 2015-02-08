@@ -1,6 +1,6 @@
 /* ssl/ssl_err.c */
 /* ====================================================================
- * Copyright (c) 1999-2009 The OpenSSL Project.  All rights reserved.
+ * Copyright (c) 1999-2011 The OpenSSL Project.  All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -80,6 +80,7 @@ static ERR_STRING_DATA SSL_str_functs[]=
 {ERR_FUNC(SSL_F_DTLS1_ACCEPT),	"DTLS1_ACCEPT"},
 {ERR_FUNC(SSL_F_DTLS1_ADD_CERT_TO_BUF),	"DTLS1_ADD_CERT_TO_BUF"},
 {ERR_FUNC(SSL_F_DTLS1_BUFFER_RECORD),	"DTLS1_BUFFER_RECORD"},
+{ERR_FUNC(SSL_F_DTLS1_CHECK_TIMEOUT_NUM),	"DTLS1_CHECK_TIMEOUT_NUM"},
 {ERR_FUNC(SSL_F_DTLS1_CLIENT_HELLO),	"DTLS1_CLIENT_HELLO"},
 {ERR_FUNC(SSL_F_DTLS1_CONNECT),	"DTLS1_CONNECT"},
 {ERR_FUNC(SSL_F_DTLS1_ENC),	"DTLS1_ENC"},
@@ -137,6 +138,7 @@ static ERR_STRING_DATA SSL_str_functs[]=
 {ERR_FUNC(SSL_F_SSL3_CALLBACK_CTRL),	"SSL3_CALLBACK_CTRL"},
 {ERR_FUNC(SSL_F_SSL3_CHANGE_CIPHER_STATE),	"SSL3_CHANGE_CIPHER_STATE"},
 {ERR_FUNC(SSL_F_SSL3_CHECK_CERT_AND_ALGORITHM),	"SSL3_CHECK_CERT_AND_ALGORITHM"},
+{ERR_FUNC(SSL_F_SSL3_CHECK_CLIENT_HELLO),	"SSL3_CHECK_CLIENT_HELLO"},
 {ERR_FUNC(SSL_F_SSL3_CLIENT_HELLO),	"SSL3_CLIENT_HELLO"},
 {ERR_FUNC(SSL_F_SSL3_CONNECT),	"SSL3_CONNECT"},
 {ERR_FUNC(SSL_F_SSL3_CTRL),	"SSL3_CTRL"},
@@ -221,6 +223,7 @@ static ERR_STRING_DATA SSL_str_functs[]=
 {ERR_FUNC(SSL_F_SSL_GET_NEW_SESSION),	"SSL_GET_NEW_SESSION"},
 {ERR_FUNC(SSL_F_SSL_GET_PREV_SESSION),	"SSL_GET_PREV_SESSION"},
 {ERR_FUNC(SSL_F_SSL_GET_SERVER_SEND_CERT),	"SSL_GET_SERVER_SEND_CERT"},
+{ERR_FUNC(SSL_F_SSL_GET_SERVER_SEND_PKEY),	"SSL_GET_SERVER_SEND_PKEY"},
 {ERR_FUNC(SSL_F_SSL_GET_SIGN_PKEY),	"SSL_GET_SIGN_PKEY"},
 {ERR_FUNC(SSL_F_SSL_INIT_WBIO_BUFFER),	"SSL_INIT_WBIO_BUFFER"},
 {ERR_FUNC(SSL_F_SSL_LOAD_CLIENT_CA_FILE),	"SSL_load_client_CA_file"},
@@ -358,6 +361,7 @@ static ERR_STRING_DATA SSL_str_reasons[]=
 {ERR_REASON(SSL_R_HTTPS_PROXY_REQUEST)   ,"https proxy request"},
 {ERR_REASON(SSL_R_HTTP_REQUEST)          ,"http request"},
 {ERR_REASON(SSL_R_ILLEGAL_PADDING)       ,"illegal padding"},
+{ERR_REASON(SSL_R_INAPPROPRIATE_FALLBACK),"inappropriate fallback"},
 {ERR_REASON(SSL_R_INCONSISTENT_COMPRESSION),"inconsistent compression"},
 {ERR_REASON(SSL_R_INVALID_CHALLENGE_LENGTH),"invalid challenge length"},
 {ERR_REASON(SSL_R_INVALID_COMMAND)       ,"invalid command"},
@@ -397,6 +401,7 @@ static ERR_STRING_DATA SSL_str_reasons[]=
 {ERR_REASON(SSL_R_MISSING_TMP_RSA_KEY)   ,"missing tmp rsa key"},
 {ERR_REASON(SSL_R_MISSING_TMP_RSA_PKEY)  ,"missing tmp rsa pkey"},
 {ERR_REASON(SSL_R_MISSING_VERIFY_MESSAGE),"missing verify message"},
+{ERR_REASON(SSL_R_MULTIPLE_SGC_RESTARTS) ,"multiple sgc restarts"},
 {ERR_REASON(SSL_R_NON_SSLV2_INITIAL_PACKET),"non sslv2 initial packet"},
 {ERR_REASON(SSL_R_NO_CERTIFICATES_RETURNED),"no certificates returned"},
 {ERR_REASON(SSL_R_NO_CERTIFICATE_ASSIGNED),"no certificate assigned"},
@@ -496,6 +501,7 @@ static ERR_STRING_DATA SSL_str_reasons[]=
 {ERR_REASON(SSL_R_TLSV1_ALERT_DECRYPTION_FAILED),"tlsv1 alert decryption failed"},
 {ERR_REASON(SSL_R_TLSV1_ALERT_DECRYPT_ERROR),"tlsv1 alert decrypt error"},
 {ERR_REASON(SSL_R_TLSV1_ALERT_EXPORT_RESTRICTION),"tlsv1 alert export restriction"},
+{ERR_REASON(SSL_R_TLSV1_ALERT_INAPPROPRIATE_FALLBACK),"tlsv1 alert inappropriate fallback"},
 {ERR_REASON(SSL_R_TLSV1_ALERT_INSUFFICIENT_SECURITY),"tlsv1 alert insufficient security"},
 {ERR_REASON(SSL_R_TLSV1_ALERT_INTERNAL_ERROR),"tlsv1 alert internal error"},
 {ERR_REASON(SSL_R_TLSV1_ALERT_NO_RENEGOTIATION),"tlsv1 alert no renegotiation"},

@@ -72,6 +72,8 @@
 
 int X509_verify(X509 *a, EVP_PKEY *r)
 	{
+	if (X509_ALGOR_cmp(a->sig_alg, a->cert_info->signature))
+		return 0;
 	return(ASN1_item_verify(ASN1_ITEM_rptr(X509_CINF),a->sig_alg,
 		a->signature,a->cert_info,r));
 	}
@@ -90,6 +92,7 @@ int NETSCAPE_SPKI_verify(NETSCAPE_SPKI *a, EVP_PKEY *r)
 
 int X509_sign(X509 *x, EVP_PKEY *pkey, const EVP_MD *md)
 	{
+	x->cert_info->enc.modified = 1;
 	return(ASN1_item_sign(ASN1_ITEM_rptr(X509_CINF), x->cert_info->signature,
 		x->sig_alg, x->signature, x->cert_info,pkey,md));
 	}
